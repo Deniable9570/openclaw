@@ -310,7 +310,7 @@ function dedupeAndPreferIpv4(results: readonly LookupAddress[]): string[] {
 
 export async function resolvePinnedHostnameWithPolicy(
   hostname: string,
-  params: { lookupFn?: LookupFn; policy?: SsrFPolicy } = {},
+  params: { lookupFn?: LookupFn; policy?: SsrFPolicy; skipDnsLookup?: boolean } = {},
 ): Promise<PinnedHostname> {
   const normalized = normalizeHostname(hostname);
   if (!normalized) {
@@ -329,7 +329,26 @@ export async function resolvePinnedHostnameWithPolicy(
     assertAllowedHostOrIpOrThrow(normalized, params.policy);
   }
 
-  const lookupFn = params.lookupFn ?? dnsLookup;
+  if (params.skipDnsLookup) {
+    // When DNS is handled externally (e.g. HTTP_PROXY env var routing through a
+    // proxy that performs name resolution), skip the DNS lookup and Phase 2 IP
+    // checks. SSRF hostname-level checks (allowlist + literal IP block) still run.
+    // The returned lookup delegates to the system resolver; the proxy handles DNS.
+    const noopLookup = (
+      _hostname: string,
+      opts: Parameters<typeof dnsLookupCb>[1],
+      cb: Parameters<typeof dnsLookupCb>[2],
+    ): void => {
+      dnsLookupCb(_hostname, opts, cb);
+    };
+    return {
+      hostname: normalized,
+      addresses: [],
+      lookup: noopLookup,
+    };
+  }
+
+    const lookupFn = params.lookupFn ?? dnsLookup;
   const results = await lookupFn(normalized, { all: true });
   if (results.length === 0) {
     throw new Error(`Unable to resolve hostname: ${hostname}`);

@@ -158,16 +158,25 @@ export async function fetchWithSsrFGuard(params: GuardedFetchOptions): Promise<G
     let dispatcher: Dispatcher | null = null;
     try {
       assertExplicitProxySupportsPinnedDns(parsedUrl, params.dispatcherPolicy, params.pinDns);
-      const pinned = await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
-        lookupFn: params.lookupFn,
-        policy: params.policy,
-      });
       const canUseTrustedEnvProxy =
         mode === GUARDED_FETCH_MODE.TRUSTED_ENV_PROXY && hasProxyEnvConfigured();
       if (canUseTrustedEnvProxy) {
+        // Use env proxy for transport. DNS resolution is deferred to the proxy.
+        // SSRF hostname-level checks (allowlist + literal IP block) still run via
+        // skipDnsLookup, but Phase 2 resolved-IP checks are skipped since the
+        // proxy handles name resolution independently.
         const { EnvHttpProxyAgent } = loadUndiciRuntimeDeps();
+        await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
+          lookupFn: params.lookupFn,
+          policy: params.policy,
+          skipDnsLookup: true,
+        });
         dispatcher = new EnvHttpProxyAgent();
       } else if (params.pinDns !== false) {
+        const pinned = await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
+          lookupFn: params.lookupFn,
+          policy: params.policy,
+        });
         dispatcher = createPinnedDispatcher(pinned, params.dispatcherPolicy, params.policy);
       }
 

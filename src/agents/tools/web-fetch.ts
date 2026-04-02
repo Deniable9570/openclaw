@@ -539,6 +539,9 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
       url: params.url,
       maxRedirects: params.maxRedirects,
       timeoutSeconds: params.timeoutSeconds,
+      // When a proxy is configured, DNS resolution is delegated to the proxy
+      // (via skipDnsLookup in fetch-guard). SSRF hostname-level checks still run.
+      useEnvProxy: true,
       init: {
         headers: {
           Accept: "text/markdown, text/html;q=0.9, */*;q=0.1",
